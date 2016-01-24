@@ -1,0 +1,54 @@
+#!/bin/bash
+# urldump
+# Dump http requests system-wide.
+#
+# Uses mitmproxy so works for https too.
+# iptables is used to transparently redirect all traffic to proxy.
+# (Your nat tables will be flushed if you have any)
+#
+# Must be run as root.
+# mitmdump can (should) be run as a different user, see below.
+#
+# For more info see:
+#   https://github.com/lemonsqueeze/urldump
+
+# User to run mitmproxy as. Beware that requests from this user won't be logged.
+# If you care about security create a non root user.
+user=root
+#user=mitmproxy
+
+debug=""
+#debug=y
+
+die()
+{ echo "$@"; exit 1; }
+debug()
+{ if [ -n "$debug" ]; then echo "$@"; fi; }
+
+# Sanity checks
+type mitmdump > /dev/null  || die "mitmdump not found, install mitmproxy package first."
+type iptables > /dev/null  || die "iptables not found, aborting."
+[ `id -u` = 0 ] || die "Must run as root, aborting."
+
+cleanup()
+{  echo ""; debug "Cleaning up"; }
+trap cleanup int
+
+iptables -t nat -F
+
+# Redirect http & https requests to proxy
+iptables -t nat -A OUTPUT  -p tcp -m owner --uid-owner $user -j ACCEPT
+iptables -t nat -A OUTPUT  -p tcp --dport 80 -j REDIRECT --to-port 8080
+iptables -t nat -A OUTPUT  -p tcp --dport 443 -j REDIRECT --to-port 8080
+
+debug "Starting mitmdump ..."
+cmd="mitmdump -T --host"
+
+if [ $user = "root" ]; then
+                        $cmd | grep --line-buffered ' http'  | cut -d\  -f3-
+else
+    sudo -n -H -u $user $cmd | grep --line-buffered ' http'  | cut -d\  -f3-
+fi
+
+# Cleanup tables
+iptables -t nat -F
