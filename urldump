@@ -34,9 +34,11 @@ cleanup()
 {  echo ""; debug "Cleaning up"; }
 trap cleanup int
 
-iptables -t nat -F
+# Backup iptables state
+state=/tmp/urldump.iptables
+iptables-save > $state
 
-# Redirect http & https requests to proxy
+# Redirect http & https requests from local machine to proxy
 iptables -t nat -A OUTPUT  -p tcp -m owner --uid-owner $user -j ACCEPT
 iptables -t nat -A OUTPUT  -p tcp --dport 80 -j REDIRECT --to-port 8080
 iptables -t nat -A OUTPUT  -p tcp --dport 443 -j REDIRECT --to-port 8080
@@ -50,5 +52,5 @@ else
     sudo -n -H -u $user $cmd | grep --line-buffered ' http'  | cut -d\  -f3-
 fi
 
-# Cleanup tables
-iptables -t nat -F
+# Restore iptables state
+iptables-restore < $state
