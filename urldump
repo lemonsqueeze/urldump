@@ -43,6 +43,12 @@ iptables -t nat -A OUTPUT  -p tcp -m owner --uid-owner $user -j ACCEPT
 iptables -t nat -A OUTPUT  -p tcp --dport 80 -j REDIRECT --to-port 8080
 iptables -t nat -A OUTPUT  -p tcp --dport 443 -j REDIRECT --to-port 8080
 
+# Redirect http & https requests from network to proxy
+# XXX doesn't work ...
+iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 8080
+iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 443 -j REDIRECT --to-port 8080
+
+
 debug "Starting mitmdump ..."
 cmd="mitmdump -T --host"
 
