@@ -1,10 +1,11 @@
 #!/bin/bash
 # urldump
-# Dump http requests system-wide.
+# Dump http(s) requests system-wide, and from lan devices as well when
+# running on a router.
 #
 # Uses mitmproxy so works for https too.
 # iptables is used to transparently redirect all traffic to proxy.
-# (Your nat tables will be flushed if you have any)
+# (Your nat tables will be flushed while this is running if you have any)
 #
 # Must be run as root.
 # mitmdump can (should) be run as a different user, see below.
@@ -12,45 +13,90 @@
 # For more info see:
 #   https://github.com/lemonsqueeze/urldump
 
+usage()
+{
+    echo "usage:"
+    echo "  urldump		  dump http(s) requests system-wide"
+    echo "  urldump --router      also show requests from lan devices behind router"
+    exit 1
+}
+
 # User to run mitmproxy as. Beware that requests from this user won't be logged.
 # If you care about security create a non root user.
 user=root
 #user=mitmproxy
 
+# Network interfaces when running in router mode:
+LAN_IF=		# lan interface
+NET_IF=		# internet interface
+
 debug=""
 #debug=y
 
-die()
-{ echo "$@"; exit 1; }
-debug()
-{ if [ -n "$debug" ]; then echo "$@"; fi; }
+die()   {  echo "$@"; exit 1;  }
+debug() {  if [ -n "$debug" ]; then echo "$@"; fi;  }
+
+[ "$1" = "--help" ] && usage
+[ "$1" = "--h" ]    && usage
+
+router=""
+if [ "$1" = "--router" ]; then
+    shift;  router="y"
+    [ -n "$LAN_IF" ] || die "need to set LAN_IF (lan interface)"
+    [ -n "$NET_IF" ] || die "need to set NET_IF (internet interface)"
+    nat=`iptables-save | grep MASQUERADE`
+fi
+
+[ $# = 0 ] || usage
+
 
 # Sanity checks
 type mitmdump > /dev/null  || die "mitmdump not found, install mitmproxy package first."
 type iptables > /dev/null  || die "iptables not found, aborting."
 [ `id -u` = 0 ] || die "Must run as root, aborting."
 
-cleanup()
-{  echo ""; debug "Cleaning up"; }
+cleanup() {  echo ""; debug "Cleaning up"; }
 trap cleanup int
 
-# Backup iptables state
-state=/tmp/urldump.iptables
-iptables-save > $state
+# save tables
+iptables-save > /tmp/urldump.iptables
 
-# Redirect http & https requests from local machine to proxy
+# reset tables
+for f in filter nat mangle; do
+    iptables -t $f -F
+    iptables -t $f -X
+    iptables -t $f -F
+done
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -P FORWARD ACCEPT
+
+
+# Redirect local http & https requests to proxy
 iptables -t nat -A OUTPUT  -p tcp -m owner --uid-owner $user -j ACCEPT
 iptables -t nat -A OUTPUT  -p tcp --dport 80 -j REDIRECT --to-port 8080
 iptables -t nat -A OUTPUT  -p tcp --dport 443 -j REDIRECT --to-port 8080
 
-# Redirect http & https requests from network to proxy
-# XXX doesn't work ...
-iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 8080
-iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 443 -j REDIRECT --to-port 8080
+# Router: Redirect http & https requests from LAN to proxy
+if [ -n "$router" ]; then
+    iptables -t nat -A PREROUTING -i $LAN_IF -p tcp --dport 80  -j REDIRECT --to-port 8080
+    iptables -t nat -A PREROUTING -i $LAN_IF -p tcp --dport 443 -j REDIRECT --to-port 8080
+    # ip6tables -t nat -A PREROUTING -i $LAN_IF -p tcp --dport 80  -j REDIRECT --to-port 8080
+    # ip6tables -t nat -A PREROUTING -i $LAN_IF -p tcp --dport 443 -j REDIRECT --to-port 8080
+
+    # need this for nat
+    if [ -n "$nat" ]; then
+	iptables -t nat -A POSTROUTING -o $NET_IF -j MASQUERADE
+    fi
+    echo "capturing local and lan traffic"
+else
+    echo "capturing local traffic only"
+fi
 
 
 debug "Starting mitmdump ..."
-cmd="mitmdump -T --host"
+cmd="mitmdump -T --host"	# Transparent proxy
+
 
 if [ $user = "root" ]; then
                         $cmd | grep --line-buffered ' http'  | cut -d\  -f3-
@@ -58,5 +104,6 @@ else
     sudo -n -H -u $user $cmd | grep --line-buffered ' http'  | cut -d\  -f3-
 fi
 
-# Restore iptables state
-iptables-restore < $state
+# restore tables
+iptables-restore /tmp/urldump.iptables
+

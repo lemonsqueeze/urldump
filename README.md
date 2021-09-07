@@ -1,14 +1,14 @@
 urldump
 =======
 
-`urldump` is a small command-line tool to dump all http requests from the current machine.
+`urldump` is a command-line tool to dump http(s) requests originating from local machine
+(or local network when running on a router).
 
 - Uses [mitmproxy](http://mitmproxy.org/) so works for https too.
 - `iptables` is used to redirect all traffic to proxy, so works transparently.  
-  (Your nat tables will be flushed if you have any though)
+  (Your nat tables will be flushed while it's running if you have any)
 
-Must be run as root.  
-`mitmdump` can (should) be run as a different user, see below.
+Must be run as root. See top of script for configuration.
 
 ### Demo
 
