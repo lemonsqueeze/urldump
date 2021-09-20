@@ -10,6 +10,8 @@ urldump
 
 Must be run as root. See top of script for configuration.
 
+`mitmproxy_wrapper` can be used to run mitmproxy as a transparent proxy on a router, capturing lan traffic.
+
 ### Demo
 
     $ sudo urldump   
@@ -23,9 +25,7 @@ Must be run as root. See top of script for configuration.
 
 ### Installation
 
-- Install [mitmproxy](http://mitmproxy.org/):
-
-        $ sudo apt-get install mitmproxy
+- Install recent [mitmproxy](http://mitmproxy.org/) (v7.0.3 right now)
 
 - Download [urldump](https://raw.githubusercontent.com/lemonsqueeze/urldump/master/urldump)
 
